@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -191,9 +192,17 @@ func selectLanguageInteractive(title string, defaultCode string) (string, error)
 	return langs[idx][0], nil
 }
 
-// fetchEngineListFiltered 拉取引擎列表并按 showFlag 过滤；allowPremium=false 时排除高级引擎。
-// 返回 [(engineId, engineShowName, highLevelFlag)...]
-func fetchEngineListFiltered(allowPremium bool) ([][3]string, error) {
+// fetchVisibleEngines 拉取 showFlag=1 的可见引擎元数据。
+type visibleEngine struct {
+	engineID       string
+	engineName     string
+	engineShowName string
+	tokenCostRatio string
+	isPremium      bool
+	sortOrder      int
+}
+
+func fetchVisibleEngines() ([]visibleEngine, error) {
 	c := client.NewBaseClient()
 	resp, err := c.GetAPI("core/pdf/engines", nil)
 	if err != nil {
@@ -203,7 +212,7 @@ func fetchEngineListFiltered(allowPremium bool) ([][3]string, error) {
 	if err := json.Unmarshal(resp.Data, &engines); err != nil {
 		return nil, err
 	}
-	var out [][3]string
+	out := make([]visibleEngine, 0, len(engines))
 	for _, e := range engines {
 		em, ok := e.(map[string]interface{})
 		if !ok {
@@ -212,42 +221,101 @@ func fetchEngineListFiltered(allowPremium bool) ([][3]string, error) {
 		if !engineFlagTruthy(em["showFlag"]) {
 			continue
 		}
-		isPremium := engineFlagTruthy(em["highLevelFlag"])
-		if isPremium && !allowPremium {
-			continue
+		sortOrder := 0
+		switch x := em["sort"].(type) {
+		case float64:
+			sortOrder = int(x)
+		case int:
+			sortOrder = x
+		case string:
+			if n, err := strconv.Atoi(strings.TrimSpace(x)); err == nil {
+				sortOrder = n
+			}
 		}
-		level := "普通"
-		if isPremium {
-			level = "高级"
-		}
-		out = append(out, [3]string{
-			fmt.Sprintf("%v", em["engineId"]),
-			fmt.Sprintf("%v", em["engineShowName"]),
-			level,
+		out = append(out, visibleEngine{
+			engineID:       fmt.Sprintf("%v", em["engineId"]),
+			engineName:     fmt.Sprintf("%v", em["engineName"]),
+			engineShowName: fmt.Sprintf("%v", em["engineShowName"]),
+			tokenCostRatio: fmt.Sprintf("%v", em["tokenCostRatio"]),
+			isPremium:      engineFlagTruthy(em["highLevelFlag"]),
+			sortOrder:      sortOrder,
 		})
 	}
 	return out, nil
 }
 
-// selectEngineInteractive 交互式选择引擎 id。
-func selectEngineInteractive(title string, allowPremium bool) (string, error) {
-	list, err := fetchEngineListFiltered(allowPremium)
-	if err != nil || len(list) == 0 {
-		return "", clierr.NetError("获取引擎列表失败或无可用引擎: "+fmt.Sprint(err), "可手动指定 --engine <id>")
+func pickTopEnginesByType(engines []visibleEngine, premium bool) []visibleEngine {
+	filtered := make([]visibleEngine, 0, len(engines))
+	for _, engine := range engines {
+		if engine.isPremium == premium {
+			filtered = append(filtered, engine)
+		}
 	}
-	// 附加 "使用默认引擎" 作为 1st 项
-	labels := []string{"使用默认引擎（服务端自选）"}
-	for _, e := range list {
-		labels = append(labels, fmt.Sprintf("%s  [%s]  (id=%s)", e[1], e[2], e[0]))
+	sort.SliceStable(filtered, func(i, j int) bool {
+		left := filtered[i]
+		right := filtered[j]
+		if left.sortOrder != right.sortOrder {
+			if left.sortOrder == 0 {
+				return false
+			}
+			if right.sortOrder == 0 {
+				return true
+			}
+			return left.sortOrder < right.sortOrder
+		}
+		return left.engineName < right.engineName
+	})
+	if len(filtered) > 3 {
+		return filtered[:3]
 	}
-	idx, err := selectOption(title, labels, 0)
+	return filtered
+}
+
+// selectEngineInteractive 交互式选择引擎 name。
+func selectEngineInteractive(title string) (string, error) {
+	engines, err := fetchVisibleEngines()
+	if err != nil || len(engines) == 0 {
+		return "", clierr.NetError("获取引擎列表失败或无可用引擎: "+fmt.Sprint(err), "可手动指定 --engine <engineName>")
+	}
+	typeLabels := []string{"普通引擎", "高级引擎"}
+	typeIdx, auto, err := selectOptionStrict("先选引擎类型", typeLabels, 0)
+	if err != nil || typeIdx < 0 {
+		return "", err
+	}
+	if auto {
+		return "", clierr.ParamError(
+			"当前环境无交互终端，无法选择引擎类型",
+			"请显式指定 --engine <engineName>；查看引擎列表: pdf-cli translate engines")
+	}
+	selectedPremium := typeIdx == 1
+	candidates := pickTopEnginesByType(engines, selectedPremium)
+	if len(candidates) == 0 {
+		return "", clierr.ParamError("当前分组无可用引擎", "运行 pdf-cli translate engines 查看完整列表")
+	}
+	labels := make([]string, 0, len(candidates)+1)
+	for _, engine := range candidates {
+		ratio := engine.tokenCostRatio
+		if ratio == "" || ratio == "<nil>" {
+			ratio = "?"
+		}
+		labels = append(labels, fmt.Sprintf("%s · %sx", engine.engineShowName, ratio))
+	}
+	labels = append(labels, "other")
+	idx, auto, err := selectOptionStrict(title, labels, 0)
 	if err != nil || idx < 0 {
 		return "", err
 	}
-	if idx == 0 {
-		return "", nil
+	if auto {
+		return "", clierr.ParamError(
+			"当前环境无交互终端，无法选择翻译引擎",
+			"请显式指定 --engine <engineName>；查看引擎列表: pdf-cli translate engines")
 	}
-	return list[idx-1][0], nil
+	if idx == len(labels)-1 {
+		return "", clierr.ParamError(
+			"请手动指定引擎名称",
+			"使用 --engine <engineName>，或先运行 pdf-cli translate engines 查看完整列表")
+	}
+	return candidates[idx].engineName, nil
 }
 
 // countPDFPages 用系统 pdfinfo 数 PDF 页数。pdfinfo 不在 PATH 时返回 (0, nil)（让上层忽略此项预检）。
@@ -1039,12 +1107,13 @@ func runAdvancedTranslate(fileKey, toLang, fromLang, engine string, ocrExplicit,
 		}
 		toLang = picked
 	}
-	// 流程图：选择引擎（会员可选高级，非会员仅普通）
+	// 流程图：先选引擎类型，再选具体引擎（普通/高级各展示前 3 个 + other）
 	if engine == "" {
-		picked, perr := selectEngineInteractive("选择翻译引擎", vip > 0)
-		if perr == nil {
-			engine = picked
+		picked, perr := selectEngineInteractive("选择具体引擎")
+		if perr != nil {
+			return perr
 		}
+		engine = picked
 	}
 	// 流程图：是否使用 OCR 功能？
 	if !ocrExplicit {

@@ -30,7 +30,7 @@ pdf-cli translate start --file-key <key> --to zh --file-format docx
 | `--file-key <string>` | 是 | 上传后获得的文件 key（来自 upload 命令） |
 | `--to <string>` | 否* | 目标语言代码（如 `zh`、`en`、`ja`）；缺省时交互选择 |
 | `--from <string>` | 否 | 源语言代码（可选，默认自动检测） |
-| `--engine <string>` | 否 | 翻译引擎 id/name；缺省时交互选择（会员可选高级） |
+| `--engine <string>` | 否 | 翻译引擎 id/name；缺省时先选普通/高级，再选该组具体引擎 |
 | `--ocr` | 否 | 启用 OCR 模式（扫描件翻译）；未显式传入时交互询问 |
 | `--term-ids <string>` | 否 | 术语表 ID，多个用逗号分隔 |
 | `--file-format <string>` | 否 | 文件格式（如 pdf, docx） |
@@ -44,10 +44,10 @@ pdf-cli translate start --file-key <key> --to zh --file-format docx
 1. **登录校验** → 未登录返回 `AuthError`，提示 `auth login` 或改用 `translate free`
 2. 获取 `vipLevel` 与 `homepage` 配置；打印会员/普通用户身份提示及今日剩余次数/字符
 3. **选择目标语言**（缺省时）→ 从 `core/pdf/lang/list` 拉取后交互选择
-4. **选择翻译引擎**（缺省时）→ 从 `core/pdf/engines` 拉取，按 `vipLevel` 过滤：
-   - 会员：显示所有 `showFlag=1` 的引擎（普通+高级）
-   - 普通用户：仅显示 `highLevelFlag=0` 的普通引擎
-   - 首项 "使用默认引擎（服务端自选）" 可选
+4. **选择翻译引擎**（缺省时）→ 从 `core/pdf/engines` 拉取，先选引擎类型，再选具体引擎：
+   - 普通引擎：展示普通组前 3 个引擎 + `other`
+   - 高级引擎：展示高级组前 3 个引擎 + `other`
+   - 选 `other` 时提示用户手动传 `--engine <engineName>`，或先运行 `pdf-cli translate engines` 查看完整列表
 5. **是否启用 OCR**（未显式传时）→ 交互选择是/否
 6. `translatePrecheck(kind="start")` 校验：
    - `remainTransCountByDay` 和 `remainCharsCountByDay` 都为 0 → `quota` 错误

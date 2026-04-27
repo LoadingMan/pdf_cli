@@ -43,12 +43,16 @@ metadata:
  ├─ 已登录 ──→ [N3a] AskUserQuestion: 是否使用免费翻译？
  │              ├─ 是 → [N4] 选语言 → upload --free --to <lang>
  │              └─ 否 → [N2] 检查会员态 (CLI 自动)
- │                       ├─ 会员 → [N4] 选语言 → [N5] 选引擎(普通/高级)
- │                       └─ 普通 → [N4] 选语言 → [N5] 仅普通引擎
- │                                ↓
- │                               [N6] AskUserQuestion: 是否启用 OCR？
- │                                ↓
- │                               upload --advanced --to <lang> --engine <e> [--ocr]
+ │                       ↓
+ │                      [N4] 选语言
+ │                       ↓
+ │                      [N5-S1] AskUserQuestion: 普通引擎 or 高级引擎
+ │                       ↓
+ │                      [N5-S2] AskUserQuestion: 所选类型下 3 个引擎 + other
+ │                       ↓
+ │                      [N6] AskUserQuestion: 是否启用 OCR？
+ │                       ↓
+ │                      upload --advanced --to <lang> --engine <e> [--ocr]
  │
  └─ 未登录 ──→ [N3b] AskUserQuestion: 是否使用高级翻译？
                 ├─ 是 → 提示运行 `pdf-cli auth login --email …` 并停止
@@ -74,7 +78,7 @@ metadata:
 | N3a | 已登录-免费 or 高级 | N1=已登录 | — | AskUserQuestion |
 | N3b | 未登录-是否高级 | N1=未登录 | — | AskUserQuestion |
 | N4 | 选目标语言 | 总是（除非用户已说）| `pdf-cli translate languages --format json` | AskUserQuestion 两阶段（S1: 3 语言 + "更多语言…" → S2: 3 语言 + "手动输入语言代码" → 文本输入）|
-| N5 | 选引擎 | 走高级路径 | `pdf-cli translate engines --format json` | AskUserQuestion 两阶段（S1: 普通/高级 → S2: 3 引擎含倍率 + "手动输入引擎名称" → 文本输入）|
+| N5 | 选引擎 | 走高级路径 | `pdf-cli translate engines --format json` | AskUserQuestion 两阶段（S1: 普通/高级 → S2: 对应类型下 3 个引擎 + `other` → 文本输入）|
 | N6 | 是否 OCR | 走高级路径 | — | AskUserQuestion |
 
 > AskUserQuestion 工具每问最多 4 个选项（schema 强制）。**不依赖工具自动 Other**——实测它在 UI 里不一定可见，所以把"更多/手动输入"作为显式选项放进 options，占用 1 个槽位，确保用户一定看到下一步入口。用户进入手动输入路径后改用对话自由文本回复，agent 拉完整列表做精确/模糊匹配，未命中则提示用 `pdf-cli translate languages|engines` 查询并终止。
@@ -109,11 +113,14 @@ if logged_in:
         vip = $ pdf-cli user profile --format json | jq .vipLevel
         # N4
         lang = ...
-        # N5
+        # N5-S1
+        engine_type = AskUserQuestion("先选引擎类型", options=["普通引擎", "高级引擎"])
+        # N5-S2
         engines = $ pdf-cli translate engines --format json
-        if vip == 0:
-            engines = [e for e in engines if e.level != "premium"]
-        engine = AskUserQuestion("选择翻译引擎", options=engines)
+        candidates = filter_by_showFlag_and_highLevelFlag(engines, engine_type)
+        engine = AskUserQuestion("选择具体引擎", options=top3_plus_other(candidates))
+        if engine == "other":
+            engine = wait_for_user_text_or_tell_them_to_run("pdf-cli translate engines")
         # N6
         ocr = AskUserQuestion("是否启用 OCR（扫描件需要）？", options=["是", "否"])
         $ pdf-cli translate upload --file <path> --advanced --to <lang> --engine <engine> [--ocr] --format json
@@ -159,7 +166,7 @@ if logged_in:
 ## Important Notes
 
 - N3a/N3b 的"是否高级"决定 `freeTag`，与"会员/普通"是两个独立维度
-- N5 引擎过滤：拿到 engines 列表后，未拿到 vipLevel>0 的用户**手动过滤** `level=premium` 的项再展示
+- N5 不要因 `vipLevel` 预过滤高级引擎；先问类型，再展示所选类型下前 3 个引擎 + `other`，普通用户若选高级则让后端返回 `quota` 错误
 - N4 语言选项过多时（>50 个），AskUserQuestion 只展示常用 top 8（zh/en/ja/ko/fr/de/es/ru），并加一个"其他（手动输入语言代码）"
 - 用户原话已包含决策时（如 "翻成日文" → ja，"高级翻译" → advanced=true，"开 OCR" → ocr=true），**直接跳过对应节点**，不要重复问
 - 任意节点用户说"取消" → 立即停止流程，不残留临时状态（CLI 上传后的 file-key 由后端 TTL 自动清理）

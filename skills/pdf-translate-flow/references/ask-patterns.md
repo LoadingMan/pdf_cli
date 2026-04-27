@@ -3,7 +3,8 @@
 每个决策节点的问题文本和选项格式。所有选项都用中文，简洁不啰嗦。
 
 如果 `AskUserQuestion` 工具尚未加载，先调用：
-```
+
+```text
 ToolSearch(query="select:AskUserQuestion", max_results=1)
 ```
 
@@ -114,7 +115,7 @@ ToolSearch(query="select:AskUserQuestion", max_results=1)
 
 **用户选"手动输入语言代码"** → agent 改用文本提示（**不再开 AskUserQuestion**），输出：
 
-```
+```text
 没有命中常用语言。请直接告诉我你要的语言代码或语言名称，例如：
   - 翻成阿拉伯语
   - 用语言代码 ar
@@ -134,11 +135,13 @@ ToolSearch(query="select:AskUserQuestion", max_results=1)
    - 模糊包含匹配 `name`（如"阿拉伯"匹配"阿拉伯语"）
 3. 命中 → 用对应 `code` 进入 upload；stdout 打印一行 `→ 目标语言: <name> (<code>)` 让用户确认
 4. **未命中** → 不要瞎猜，直接打印：
-   ```
+
+   ```text
    你输入的「<input>」不在支持的语言列表里。请先运行：
      pdf-cli translate languages
    查看完整列表，找到对应代码后再告诉我。
    ```
+
    然后**终止本次流程**——让用户重新发起，不要循环追问。
 
 ### 跳过 N4 的条件
@@ -159,7 +162,7 @@ ToolSearch(query="select:AskUserQuestion", max_results=1)
 {
   "questions": [
     {
-      "question": "选择引擎类型",
+      "question": "先选引擎类型",
       "header": "引擎类型",
       "multiSelect": false,
       "options": [
@@ -178,24 +181,26 @@ ToolSearch(query="select:AskUserQuestion", max_results=1)
 ```
 
 **会员**（`vipLevel > 0`）在打开此问题前 stdout 提示一行：
-```
+
+```text
 你是会员，两组引擎都可用。普通引擎倍率小消耗少，高级引擎质量更高。
 ```
 
 **非会员**（`vipLevel == 0`）在打开此问题前 stdout 提示一行：
-```
+
+```text
 你不是会员（vipLevel=0）。建议选普通引擎；选了高级引擎会被后端 quota 拦截。
 普通用户限额：每日 2 次 / 每次最多 600 字符。
 ```
 
-### N5-S2（屏 2：3 个引擎 + 显式"手动输入"）
+### N5-S2（屏 2：3 个引擎 + `other`）
 
 根据 S1 选择，从 `engines` 拉过滤后的列表：
 
 - S1=普通：过滤 `showFlag==1 && highLevelFlag==0`
 - S1=高级：过滤 `showFlag==1 && highLevelFlag==1`
 
-按 `sort` 升序取**前 3 个**作为引擎 options，第 4 个槽位放显式"手动输入"。label 含倍率，description 冗余 `engineName`。
+按 `sort` 升序取**前 3 个**作为引擎 options，第 4 个槽位放显式 `other`。label 含倍率，description 冗余 `engineName`。
 
 ```json
 {
@@ -208,25 +213,25 @@ ToolSearch(query="select:AskUserQuestion", max_results=1)
         {"label": "chatgpt-4omini · 0x",   "description": "engineName=chatgpt-4omini"},
         {"label": "gemini-1.5-pro · 1x",   "description": "engineName=gemini-1.5-pro"},
         {"label": "glm-4.5-flash · 1x",    "description": "engineName=glm-4.5-flash"},
-        {"label": "手动输入引擎名称",       "description": "上面没有想要的引擎时选这个"}
+        {"label": "other",                 "description": "手动输入引擎名称或先查询完整引擎列表"}
       ]
     }
   ]
 }
 ```
 
-（高级组 3 个示例：`chatgpt-4.1-mini · 1x` / `gemini-2.0-flash · 1x` / `deepseek-V3 · 1x` + `手动输入引擎名称`）
+（高级组示例：`chatgpt-4.1-mini · 1x` / `gemini-2.0-flash · 1x` / `deepseek-V3 · 1x` + `other`）
 
-**用户选"手动输入引擎名称"** → agent 改用文本提示，不再开 AskUserQuestion：
+**用户选 `other`** → agent 改用文本提示，不再开 AskUserQuestion：
 
-```
-没有命中前 4 个引擎。请直接告诉我引擎名称，例如：
+```text
+没有命中想要的引擎。请直接告诉我引擎名称，例如：
   - 用 chatgpt-4.1
   - 引擎 deepseek-v3.1
 
-如果不确定有哪些，请先运行：
+也可以先运行：
   pdf-cli translate engines
-查看完整列表（含倍率），再告诉我引擎名即可。
+查看完整列表（含倍率），再告诉我 engineName。
 ```
 
 等待用户文本回复。
@@ -242,11 +247,13 @@ ToolSearch(query="select:AskUserQuestion", max_results=1)
    - 一致 → 用 `engineName` 传给 `--engine`，stdout 打印 `→ 引擎: <showName> · <ratio>x`
    - 不一致 → stdout 提示 `你输入的引擎是<普通/高级>，与你刚才选的<高级/普通>类型不符。我按引擎实际类型走` 然后继续（**信号最强的是 engineName 匹配，类型可以自动纠正**）
 5. **未命中** → 打印：
-   ```
+
+   ```text
    你输入的「<input>」不在支持的引擎列表里。请先运行：
      pdf-cli translate engines
    查看完整列表，找到 engineName 后再告诉我。
    ```
+
    然后**终止本次流程**。
 
 **反推 engineName**：用户从 S2 选中卡片选项时，从 description 里解析 `engineName=<x>`。
@@ -316,6 +323,7 @@ ToolSearch(query="select:AskUserQuestion", max_results=1)
 ### 推荐策略
 
 **首屏合并 3 个**（节省一来一回）：
+
 ```json
 {
   "questions": [
@@ -327,6 +335,7 @@ ToolSearch(query="select:AskUserQuestion", max_results=1)
 ```
 
 然后根据用户在首屏的回答**按需触发**第二屏：
+
 - N4-S1 选 Other → 第二轮加 N4-S2
 - N5-S1 选完后 → 第二轮加 N5-S2
 - 两个都触发 → 第二轮 2 个 question；只触发一个 → 第二轮 1 个 question
@@ -345,6 +354,7 @@ ToolSearch(query="select:AskUserQuestion", max_results=1)
 ## 取消处理
 
 `AskUserQuestion` 用户取消时（返回空或 cancel 信号）：
+
 - 立即停止流程
 - 打印 `已取消。如需重试请重新发起翻译。`
 - 不要清理任何状态（file-key 由后端 TTL 处理）

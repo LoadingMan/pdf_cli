@@ -155,16 +155,35 @@ $ pdf-cli translate languages --format json
 
 # N5 数据
 $ pdf-cli translate engines --format json
-# 应用过滤：showFlag=1 且 highLevelFlag != 1
 ```
 
-**agent**：合并 N4 + N5 + N6 一次问（见 ask-patterns.md 末尾）。在打开问题前打印：
+**agent**：先问语言 + 引擎类型 + OCR。在打开问题前打印：
 > 你不是会员，可选普通引擎；高级引擎仅会员可用。
 > 当前限额：每日 2 次 / 每次最多 600 字符。
 
-→ AskUserQuestion (合并 N4/N5/N6)
+→ AskUserQuestion (合并 N4-S1 / N5-S1 / N6)
 
-**用户选**: zh-CN / google / 否
+**用户选**: zh-CN / 普通引擎 / 否
+
+**agent**：根据用户选的引擎类型，展示普通组前 3 个引擎 + `other`。
+
+→ AskUserQuestion (N5-S2)
+
+**用户选**: other
+
+**agent 回复**：
+> 没有命中想要的引擎。请直接告诉我引擎名称，例如：
+>
+> - 用 chatgpt-4.1
+> - 引擎 deepseek-v3.1
+>
+> 也可以先运行：
+>
+> `pdf-cli translate engines`
+>
+> 查看完整列表（含倍率），再告诉我 engineName。
+
+**用户**: `google`
 
 ```bash
 $ pdf-cli translate upload \

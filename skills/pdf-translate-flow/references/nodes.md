@@ -153,10 +153,12 @@ pdf-cli translate engines --format json
   - **始终展示**，会员/非会员都问，不能因会员态自动跳过——会员选普通也合理（倍率小、成本低）
   - 会员在打开 S1 前 stdout 加一行说明：两组都可用，普通便宜，高级质量高
   - 非会员在打开 S1 前 stdout 加一行警告：选高级会被后端 quota 拦截 + 普通用户额度（每日 2 次 / 每次 600 字符）
-- **S2**：根据 S1 选择，从 `engines` 过滤 `showFlag==1` + `highLevelFlag` 匹配，按 `sort` 升序取**前 3 个**作为引擎 options，第 4 个槽位放显式 "手动输入引擎名称"
+- **S2**：根据 S1 选择，从 `engines` 过滤 `showFlag==1` + `highLevelFlag` 匹配，按 `sort` 升序取**前 3 个**作为引擎 options，第 4 个槽位放显式 `other`
+  - S1=高级 → 展示 3 个高级引擎 + `other`
+  - S1=普通 → 展示 3 个普通引擎 + `other`
   - label 形如 `<engineShowName> · <tokenCostRatio>x`
   - description 冗余写 `engineName=<x>` 便于反推
-- **S2 选"手动输入引擎名称"**：agent 改用文本提示，让用户回复 engineName，并告知可运行 `pdf-cli translate engines` 查询
+- **S2 选 `other`**：agent 不再调 AskUserQuestion，改用文本提示，让用户手动输入 `engineName`，并告知也可运行 `pdf-cli translate engines` 查询完整列表
 
 详细模板见 [ask-patterns.md#n5](ask-patterns.md#n5-选择翻译引擎两阶段)。
 

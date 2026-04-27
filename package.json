@@ -1,6 +1,6 @@
 {
   "name": "@loadingman/pdf_cli",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "PDF translation and PDF tools CLI — translate PDFs, merge, split, compress, encrypt, extract pages and more",
   "keywords": [
     "pdf",
