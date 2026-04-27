@@ -1,0 +1,46 @@
+{
+  "name": "@loadingman/pdf_cli",
+  "version": "1.0.7",
+  "description": "PDF translation and PDF tools CLI — translate PDFs, merge, split, compress, encrypt, extract pages and more",
+  "keywords": [
+    "pdf",
+    "cli",
+    "pdf-translate",
+    "pdf-tools",
+    "pdf-merge",
+    "pdf-split",
+    "pdf-compress",
+    "pdf-to-word"
+  ],
+  "homepage": "https://gitee.com/loadingmans/pdf_cli#readme",
+  "bugs": {
+    "url": "https://gitee.com/loadingmans/pdf_cli/issues"
+  },
+  "bin": {
+    "pdf-cli": "scripts/run.js"
+  },
+  "scripts": {
+    "postinstall": "node scripts/install.js"
+  },
+  "os": [
+    "darwin",
+    "linux",
+    "win32"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
+  ],
+  "engines": {
+    "node": ">=16"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://gitee.com/loadingmans/pdf_cli.git"
+  },
+  "license": "UNLICENSED",
+  "files": [
+    "scripts/install.js",
+    "scripts/run.js"
+  ]
+}
